@@ -1,27 +1,27 @@
+// server.js — KittyAI Shrine Gateway ⚡️
+
 import express from "express";
-import fetch from "node-fetch";
 import cors from "cors";
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.use(cors());            // allow cross-origin requests
+app.use(express.json());    // parse JSON bodies
 
 const PORT = process.env.PORT || 3000;
 
-// Quick status route
+// 🟢 Status route — instant reply
 app.get("/status", (req, res) => {
-  res.json({ ok: true, message: "KittyAI is alive and fast ⚡️" });
+  res.json({ ok: true, message: "KittyAI shrine is alive ⚡️" });
 });
 
-// Chat route with timeout + streaming
+// 💬 Chat route — streaming + timeout
 app.post("/chat", async (req, res) => {
   const userMessage = req.body.message;
 
-  // Abort if OpenAI takes too long
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000); // 15s max
-
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000); // 15s max
+
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -31,7 +31,7 @@ app.post("/chat", async (req, res) => {
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: userMessage }],
-        stream: true // <— stream responses
+        stream: true
       }),
       signal: controller.signal
     });
@@ -40,26 +40,22 @@ app.post("/chat", async (req, res) => {
 
     // Stream chunks directly to client
     res.setHeader("Content-Type", "text/event-stream");
-    response.body.on("data", chunk => {
-      res.write(chunk);
-    });
-    response.body.on("end", () => {
-      res.end();
-    });
+    response.body.on("data", chunk => res.write(chunk));
+    response.body.on("end", () => res.end());
 
   } catch (err) {
     res.status(500).json({ error: "KittyAI request failed", details: err.message });
   }
 });
 
-// Image route with timeout
+// 🎨 Image generation route — with timeout
 app.post("/generate-image", async (req, res) => {
   const prompt = req.body.prompt;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000); // 20s max
-
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000); // 20s max
+
     const response = await fetch("https://api.openai.com/v1/images/generations", {
       method: "POST",
       headers: {
@@ -83,6 +79,7 @@ app.post("/generate-image", async (req, res) => {
   }
 });
 
+// 🚀 Launch server
 app.listen(PORT, () => {
   console.log(`KittyAI running on http://localhost:${PORT}`);
 });
