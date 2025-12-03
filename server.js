@@ -1,69 +1,88 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const axios = require('axios');
+import express from "express";
+import fetch from "node-fetch";
+import cors from "cors";
 
 const app = express();
+app.use(cors());
+app.use(express.json());
+
 const PORT = process.env.PORT || 3000;
 
-// ⚠️ Directly using your API key (simpler, but less secure)
-const API_KEY = "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";
-
-app.use(bodyParser.json());
-
-// 🏠 Root
-app.get('/', (req, res) => {
-  res.send('🐱 KittyAI server is running with real AI power!');
+// Quick status route
+app.get("/status", (req, res) => {
+  res.json({ ok: true, message: "KittyAI is alive and fast ⚡️" });
 });
 
-// 💬 Chat with AI
-app.post('/chat', async (req, res) => {
-  const { message } = req.body;
-  if (!message) return res.status(400).json({ error: "Message is required" });
+// Chat route with timeout + streaming
+app.post("/chat", async (req, res) => {
+  const userMessage = req.body.message;
+
+  // Abort if OpenAI takes too long
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000); // 15s max
 
   try {
-    const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: message }]
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.API_KEY}`
       },
-      {
-        headers: { Authorization: `Bearer ${API_KEY}` }
-      }
-    );
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: userMessage }],
+        stream: true // <— stream responses
+      }),
+      signal: controller.signal
+    });
 
-    res.json({ reply: response.data.choices[0].message.content });
-  } catch (error) {
-    res.status(500).json({ error: "AI chat failed", details: error.message });
+    clearTimeout(timeout);
+
+    // Stream chunks directly to client
+    res.setHeader("Content-Type", "text/event-stream");
+    response.body.on("data", chunk => {
+      res.write(chunk);
+    });
+    response.body.on("end", () => {
+      res.end();
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: "KittyAI request failed", details: err.message });
   }
 });
 
-// 🖼️ Generate Image
-app.post('/generate-image', async (req, res) => {
-  const { prompt } = req.body;
-  if (!prompt) return res.status(400).json({ error: "Prompt is required" });
+// Image route with timeout
+app.post("/generate-image", async (req, res) => {
+  const prompt = req.body.prompt;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000); // 20s max
 
   try {
-    const response = await axios.post(
-      'https://api.openai.com/v1/images/generations',
-      { model: "gpt-image-1", prompt },
-      { headers: { Authorization: `Bearer ${API_KEY}` } }
-    );
+    const response = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-image-1",
+        prompt,
+        size: "512x512"
+      }),
+      signal: controller.signal
+    });
 
-    res.json({ imageUrl: response.data.data[0].url });
-  } catch (error) {
-    res.status(500).json({ error: "Image generation failed", details: error.message });
+    clearTimeout(timeout);
+    const data = await response.json();
+    res.json(data);
+
+  } catch (err) {
+    res.status(500).json({ error: "Image generation failed", details: err.message });
   }
-});
-
-// 🎬 Generate Video (placeholder until API supports video)
-app.post('/generate-video', async (req, res) => {
-  const { prompt } = req.body;
-  if (!prompt) return res.status(400).json({ error: "Prompt is required" });
-
-  res.json({ message: `Video generation for "${prompt}" is not yet supported.` });
 });
 
 app.listen(PORT, () => {
-  console.log(`KittyAI is live at http://localhost:${PORT}`);
+  console.log(`KittyAI running on http://localhost:${PORT}`);
 });
